@@ -1,0 +1,18 @@
+services:
+  transcribe_ai:
+    container_name: transcribe_ai
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    image: transcribe_ai
+    volumes:
+      - ./src:/app
+    tty: true
+    # ------- GPU ------
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - capabilities: [gpu]
+    # shm_size: "16gb"
+    # -------------------
