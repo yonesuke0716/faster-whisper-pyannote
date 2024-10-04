@@ -14,7 +14,7 @@ hf_token = os.getenv("HUGGING_FACE_TOKEN")
 start_time = time.time()
 
 
-def create_json_data(segments, diarization, duration):
+def concat_whisper_pyannote(segments, diarization, duration):
     data = []
     for index, _dict in enumerate(segments):
         start_time = _dict.start
@@ -96,7 +96,7 @@ def main(audio_file):
     diarization = pipeline({"waveform": waveform, "sample_rate": sample_rate})
     # ============= pyannotte e ================
 
-    results = create_json_data(segments, diarization, duration)
+    results = concat_whisper_pyannote(segments, diarization, duration)
 
     return results
 
