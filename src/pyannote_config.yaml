@@ -8,7 +8,7 @@ pipeline:
     embedding_batch_size: 32
     embedding_exclude_overlap: true
     # segmentation: pyannote/segmentation-3.0
-    segmentation: ./models/pyannote_model.bin
+    segmentation: ./pyannote_model.bin
     segmentation_batch_size: 32
 
 params:

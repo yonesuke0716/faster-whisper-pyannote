@@ -162,4 +162,5 @@ cython_debug/
 #.idea/
 
 # ローカルモデルは除外
-src/models
+src/large-v3
+*.bin

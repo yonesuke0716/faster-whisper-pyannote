@@ -63,11 +63,10 @@ def main(audio_file):
 
     # ============= faster_whisper s ================
     # offline（ダウンロード済モデルを使用）
-    # faster_whisper.download_model("large-v3", "./models/large-v3")
-    # model = WhisperModel("./models/large-v3", device="cpu", compute_type="int8")
+    model = WhisperModel("./large-v3", device="cpu", compute_type="int8")
 
     # online（ネットからモデルをダウンロード）
-    model = WhisperModel("large-v3", device="cpu", compute_type="int8")
+    # model = WhisperModel("large-v3", device="cpu", compute_type="int8")
 
     segments, _ = model.transcribe(audio_file, vad_filter=True)
 
@@ -75,14 +74,14 @@ def main(audio_file):
 
     # ============= pyannotte s ================
     # offline（ダウンロード済モデルを使用）
-    # pipeline = Pipeline.from_pretrained(
-    #     "pyannote_config.yaml",
-    # )
-    # online（ネットからモデルをダウンロード）
     pipeline = Pipeline.from_pretrained(
-        "pyannote/speaker-diarization-3.1",
-        use_auth_token=str(hf_token),
+        "pyannote_config.yaml",
     )
+    # online（ネットからモデルをダウンロード）
+    # pipeline = Pipeline.from_pretrained(
+    #     "pyannote/speaker-diarization-3.1",
+    #     use_auth_token=str(hf_token),
+    # )
 
     # GPUで実行
     # pipeline = pipeline.to(torch.device("cuda"))

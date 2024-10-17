@@ -1,5 +1,5 @@
 # ------------ CPU ----------------
-FROM python:3.12-slim
+FROM python:3.12.6-slim-bullseye AS builder
 # --------------------------------
 
 # ------------ GPU ---------------
@@ -11,11 +11,17 @@ FROM python:3.12-slim
 # --------------------------------
 RUN apt-get update
 
-WORKDIR /app
+RUN pip install -U pip \
+    && pip install --no-cache-dir faster-whisper==1.0.2 pyannote-audio==3.3.1
 
 COPY /src /app
 
-RUN pip install -U pip \
-    && pip install --no-cache-dir faster-whisper==1.0.2 pyannote-audio==3.3.1
+FROM python:3.12.6-slim-bullseye AS dev
+
+WORKDIR /app
+
+COPY --from=builder /usr/local/lib/python3.12/site-packages /root/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin usr/local/bin
+COPY --from=builder /app /app
 
 ENV HUGGING_FACE_TOKEN "hf_your_token"
