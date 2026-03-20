@@ -1,15 +1,12 @@
 # instantiate the pipeline
 import json
 import os
-import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
 
 from faster_whisper import WhisperModel
 from pyannote.audio import Pipeline
-from pydub import AudioSegment
-from pydub.silence import detect_nonsilent
 import torchaudio
 
 try:
@@ -20,27 +17,6 @@ except ImportError:
 # ゲート付きモデル（pyannote 等）用。必須: https://huggingface.co/settings/tokens で発行し、
 # 各モデルページで「Agree and access repository」を実施すること
 hf_token = os.getenv("HUGGING_FACE_TOKEN") or os.getenv("HF_TOKEN")
-
-# 無音検知で分割するときのパラメータ（pydub detect_nonsilent）
-MIN_SILENCE_LEN_MS = 500  # この長さの無音で区切る
-SILENCE_THRESH_DB = -30  # これ以下を無音とみなす（dBFS）
-WHISPER_SAMPLE_RATE = 16000
-
-
-def split_audio_on_silence(audio_path: str) -> list[tuple[int, int]]:
-    """
-    pydub の無音検知で WAV を分割し、各セグメントの (開始ms, 終了ms) のリストを返す。
-    """
-    sound = AudioSegment.from_file(
-        audio_path, format=Path(audio_path).suffix[1:] or "wav"
-    )
-    # detect_nonsilent には keep_silence 引数はない（split_on_silence のみ）
-    segments_ms = detect_nonsilent(
-        sound,
-        min_silence_len=MIN_SILENCE_LEN_MS,
-        silence_thresh=SILENCE_THRESH_DB,
-    )
-    return segments_ms
 
 
 def get_speaker_for_interval(diarization, start_sec: float, end_sec: float) -> str:
@@ -136,72 +112,88 @@ def insert_subtitle(segments: list, mp4_path: str, duration: float):
 
 
 def main(audio_file, mp4_file=None):
-    # 無音検知で WAV を分割（pydub）
-    segments_ms = split_audio_on_silence(audio_file)
-    if not segments_ms:
-        raise ValueError("無音検知でセグメントが得られませんでした。")
+    # whisper_model_path = "./large-v3"
+    whisper_model_path = "./tarbo"
+    whisper_device = "cpu"
+    whisper_compute_type = "int8"
+    diarization_model_id = "pyannote_config.yaml"
 
-    sound = AudioSegment.from_file(
-        audio_file, format=Path(audio_file).suffix[1:] or "wav"
+    print(f"[開始] audio_file={audio_file} mp4_file={mp4_file or 'なし'}")
+    print(f"[モデル] 話者分離(diarization)={diarization_model_id}")
+    print(
+        f"[モデル] 文字起こし(whisper)={whisper_model_path} device={whisper_device} compute_type={whisper_compute_type}"
     )
+
+    # 入力音声をロード（話者分離用）
     waveform, sample_rate = torchaudio.load(audio_file)
     duration = waveform.shape[1] / sample_rate
 
     # 話者分離は全体に対して1回だけ
-    pipeline = Pipeline.from_pretrained("pyannote_config.yaml")
+    print("[話者分離中...]")
+    pipeline = Pipeline.from_pretrained(diarization_model_id)
+    speaker_separation_start = time.perf_counter()
     diarization = pipeline({"waveform": waveform, "sample_rate": sample_rate})
+    speaker_separation_end = time.perf_counter()
+    speaker_separation_sec = speaker_separation_end - speaker_separation_start
+    print("[話者分離完了]")
 
-    # 分割ごとに文字起こし（faster_whisper）
-    model = WhisperModel("./large-v3", device="cpu", compute_type="int8")
+    # 音声全体を1回だけ文字起こし（faster_whisper）
+    print("[文字起こしモデル読み込み中...]")
+    model = WhisperModel(
+        whisper_model_path, device=whisper_device, compute_type=whisper_compute_type
+    )
 
     results = []
     segment_objects = []  # insert_subtitle 用の .start / .end / .text オブジェクト
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-        for idx, (start_ms, end_ms) in enumerate(segments_ms):
-            start_sec = start_ms / 1000.0
-            end_sec = end_ms / 1000.0
-            if start_sec > duration:
-                break
+    print("[文字起こし中...]")
+    transcription_start = time.perf_counter()
+    segs, _ = model.transcribe(audio_file, vad_filter=False)
+    transcription_end = time.perf_counter()
+    print("[文字起こし完了]")
 
-            # 該当区間を 16kHz モノで書き出し
-            chunk = sound[start_ms:end_ms]
-            chunk = chunk.set_frame_rate(WHISPER_SAMPLE_RATE).set_channels(1)
-            chunk_path = tmpdir / f"chunk_{idx}.wav"
-            chunk.export(str(chunk_path), format="wav")
+    transcription_sec = transcription_end - transcription_start
 
-            segs, _ = model.transcribe(str(chunk_path), vad_filter=False)
-            text = " ".join(s.text.strip() for s in segs).strip()
-            if not text:
-                continue
+    for s in segs:
+        text = s.text.strip()
+        if not text:
+            continue
 
-            speaker = get_speaker_for_interval(diarization, start_sec, end_sec)
-            results.append(
-                {
-                    "id": len(results) + 1,
-                    "start": format_timestamp(start_sec),
-                    "end": format_timestamp(end_sec),
-                    "text": text,
-                    "speaker": speaker,
-                }
-            )
-            # 字幕用に .start / .end / .text を持つオブジェクト
-            segment_objects.append(
-                SimpleNamespace(start=start_sec, end=end_sec, text=text)
-            )
+        speaker = get_speaker_for_interval(diarization, s.start, s.end)
+        results.append(
+            {
+                "id": len(results) + 1,
+                "start": format_timestamp(s.start),
+                "end": format_timestamp(s.end),
+                "text": text,
+                "speaker": speaker,
+            }
+        )
+        # 字幕用に .start / .end / .text を持つオブジェクト
+        segment_objects.append(SimpleNamespace(start=s.start, end=s.end, text=text))
 
     if mp4_file:
+        print("[字幕生成中...]")
         insert_subtitle(segment_objects, mp4_file, duration)
     else:
-        with open("test.json", "w") as f:
+        print("[test.json 書き出し中...]")
+        # Windows のデフォルトエンコーディングだと文字化けしやすいので UTF-8 明示
+        with open("test.json", "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False)
+
+    speaker_separation_min = speaker_separation_sec / 60.0
+    transcription_min = transcription_sec / 60.0
+
+    timing = {
+        "speaker_separation_min": speaker_separation_min,
+        "transcription_min": transcription_min,
+    }
+    return timing
 
 
 if __name__ == "__main__":
-    start_time = time.time()
-    results = main("output.wav")
-    # main("g_06.wav")
-    end_time = time.time()
+    timing = main("output.wav")
+
     # minuteで表示
-    print((end_time - start_time) / 60)
+    print(f"話者分離: {timing['speaker_separation_min']:.2f}分")
+    print(f"文字起こし: {timing['transcription_min']:.2f}分")
