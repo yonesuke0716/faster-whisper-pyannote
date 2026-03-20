@@ -8,6 +8,8 @@ services:
     volumes:
       - ./src:/app
     tty: true
+    environment:
+      - HUGGING_FACE_TOKEN=$HUGGING_FACE_TOKEN
     # ------- GPU ------
     # deploy:
     #   resources:
