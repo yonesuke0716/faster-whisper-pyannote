@@ -17,7 +17,7 @@ WORKDIR /app
 # pyannote が use_auth_token を渡すため、huggingface_hub は use_auth_token 未廃止の 0.22.x に固定
 RUN pip install -U pip \
     && pip install --no-cache-dir "numpy<2" "torch==2.2.0" "torchaudio==2.2.0" \
-    && pip install --no-cache-dir faster-whisper==1.0.2 pyannote-audio==3.3.1 moviepy==1.0.3 matplotlib pydub \
+    && pip install --no-cache-dir faster-whisper==1.2.1 pyannote-audio==3.3.1 moviepy==1.0.3 matplotlib pydub \
     && pip install --no-cache-dir ImageMagic==0.2.1 \
     && pip install --no-cache-dir --force-reinstall "huggingface_hub>=0.19,<0.23" "numpy<2"
 

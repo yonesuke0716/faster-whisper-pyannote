@@ -163,7 +163,7 @@ cython_debug/
 
 # ローカルモデルは除外
 src/large-v3
-src/tarbo
+src/turbo_offline
 *.bin
 uv.lock
 *.json

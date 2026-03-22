@@ -4,6 +4,37 @@ faster-whisperとpyannoteを使って、文字起こしと話者識別を行う�
 
 ## 実行方法
 
+### uv
+
+リポジトリのルートで依存関係を同期します。
+
+```
+uv sync
+```
+
+仮想環境を有効化します。
+
+Windows（PowerShell）:
+
+```
+.\.venv\Scripts\Activate.ps1
+```
+
+macOS:
+
+```
+source .venv/bin/activate
+```
+
+`src` に移動して `transcript.py` を実行します（相対パスはこのディレクトリ基準です）。
+
+```
+cd src
+python transcript.py
+```
+
+### Docker
+
 まずはDockerイメージをビルドします。
 
 ```

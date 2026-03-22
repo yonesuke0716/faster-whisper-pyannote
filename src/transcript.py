@@ -2,6 +2,7 @@
 import json
 import os
 import time
+import torch
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -113,8 +114,9 @@ def insert_subtitle(segments: list, mp4_path: str, duration: float):
 
 def main(audio_file, mp4_file=None):
     # whisper_model_path = "./large-v3"
-    whisper_model_path = "./tarbo"
-    whisper_device = "cpu"
+    whisper_model_path = "./turbo_offline"
+    whisper_device = "cuda"
+    pyannote_device = "cuda"
     whisper_compute_type = "int8"
     diarization_model_id = "pyannote_config.yaml"
 
@@ -131,6 +133,8 @@ def main(audio_file, mp4_file=None):
     # 話者分離は全体に対して1回だけ
     print("[話者分離中...]")
     pipeline = Pipeline.from_pretrained(diarization_model_id)
+    device = torch.device(pyannote_device if torch.cuda.is_available() else "cpu")
+    pipeline.to(device)
     speaker_separation_start = time.perf_counter()
     diarization = pipeline({"waveform": waveform, "sample_rate": sample_rate})
     speaker_separation_end = time.perf_counter()
@@ -142,6 +146,9 @@ def main(audio_file, mp4_file=None):
     model = WhisperModel(
         whisper_model_path, device=whisper_device, compute_type=whisper_compute_type
     )
+    # model = WhisperModel(
+    #     "turbo", device=whisper_device, compute_type=whisper_compute_type
+    # )
 
     results = []
     segment_objects = []  # insert_subtitle 用の .start / .end / .text オブジェクト
@@ -149,10 +156,6 @@ def main(audio_file, mp4_file=None):
     print("[文字起こし中...]")
     transcription_start = time.perf_counter()
     segs, _ = model.transcribe(audio_file, vad_filter=False)
-    transcription_end = time.perf_counter()
-    print("[文字起こし完了]")
-
-    transcription_sec = transcription_end - transcription_start
 
     for s in segs:
         text = s.text.strip()
@@ -172,6 +175,10 @@ def main(audio_file, mp4_file=None):
         # 字幕用に .start / .end / .text を持つオブジェクト
         segment_objects.append(SimpleNamespace(start=s.start, end=s.end, text=text))
 
+    transcription_end = time.perf_counter()
+    transcription_sec = transcription_end - transcription_start
+    print("[文字起こし完了]")
+
     if mp4_file:
         print("[字幕生成中...]")
         insert_subtitle(segment_objects, mp4_file, duration)
@@ -181,12 +188,9 @@ def main(audio_file, mp4_file=None):
         with open("test.json", "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False)
 
-    speaker_separation_min = speaker_separation_sec / 60.0
-    transcription_min = transcription_sec / 60.0
-
     timing = {
-        "speaker_separation_min": speaker_separation_min,
-        "transcription_min": transcription_min,
+        "speaker_separation_sec": speaker_separation_sec,
+        "transcription_sec": transcription_sec,
     }
     return timing
 
@@ -194,6 +198,5 @@ def main(audio_file, mp4_file=None):
 if __name__ == "__main__":
     timing = main("output.wav")
 
-    # minuteで表示
-    print(f"話者分離: {timing['speaker_separation_min']:.2f}分")
-    print(f"文字起こし: {timing['transcription_min']:.2f}分")
+    print(f"話者分離: {timing['speaker_separation_sec']:.2f}秒")
+    print(f"文字起こし: {timing['transcription_sec']:.2f}秒")
